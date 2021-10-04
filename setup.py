@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="banrural_bank_parser_gt",
-    version="0.1.0",
+    version="0.1.1",
     author="Carlos Simon",
     author_email="dev@csimon.dev",
     description="Banrural Parser",
@@ -26,6 +26,6 @@ setup(
     ], 
     python_requires=">=3.6",
     install_requires=[
-        "bank_base_gt=>0.2"
+        "bank_base_gt>=0.2"
     ]
 )
