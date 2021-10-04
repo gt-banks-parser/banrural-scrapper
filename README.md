@@ -73,28 +73,17 @@ with BanruralBank(credentials) as connection:
 
 It's important to logout after you finish your operations otherwise you can lock yourself and that won't allow you to login from the website, that's due security protections of Banrural.
 
-
-
-
-Example to get movements of all accounts of Banrural bank, you should install first, banrural library
-
+Even though `with` statement is the recommended way to make sure logout method is called. You can also execute it manually.
 
 ```python
-credentials = UserPasswordBankLogin(username="ENTER YOUR USERNAME", password="ENTER YOUR PASSWORD")
-
-
-def test():
-    with BanruralBank(credentials) as connection: # Login with bank and make sure that we logout after doing all operations
-        accounts = connection.fetch_accounts() # Fetch all accounts
-        for a in accounts:
-            a.fetch_movements(
-                datetime.date.today() - datetime.timedelta(days=20),
-                datetime.date.today() + datetime.timedelta(days=1),
-            )
-            # Fetch all movements 
-
-
-test()
+    bank = BanruralBank(credentials)
+    try:
+        bank.login()
+        # Do your work
+    except:
+        pass
+    finally:
+        bank.logout()
 ```
 
 ### Contributing
