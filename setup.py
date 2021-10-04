@@ -26,6 +26,6 @@ setup(
     ], 
     python_requires=">=3.6",
     install_requires=[
-        "bank_base_gt=>0.2"
+        "bank_base_gt>=0.2"
     ]
 )
