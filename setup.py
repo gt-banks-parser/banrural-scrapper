@@ -1,0 +1,26 @@
+from setuptools import setup, find_packages
+
+with open("README.md", "r") as f:
+    long_description = f.read()
+
+setup(
+    name="banrural_bank_parser_gt",
+    version="0.0.1",
+    author="Carlos Simon",
+    author_email="dev@csimon.dev",
+    description="Banrural Parser",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/gt-banks-parser/banks-parser-base",
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ], 
+    python_requires=">=3.6",
+    install_requires=[
+        "bank_base_gt"
+    ]
+)
