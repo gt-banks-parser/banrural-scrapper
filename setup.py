@@ -15,9 +15,14 @@ setup(
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     classifiers=[
-        "Programming Language :: Python :: 3",
+"Programming Language :: Python :: 3.6",
+        "Development Status :: 4 - Beta",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
+        "Intended Audience :: Financial and Insurance Industry",
+        "Intended Audience :: Information Technology",
+        "Topic :: Office/Business :: Financial",
+        "Topic :: Utilities"
     ], 
     python_requires=">=3.6",
     install_requires=[
