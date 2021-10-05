@@ -69,6 +69,14 @@ class BanruralBank(Bank):
             accounts.append(account)
         return accounts
 
+    def get_account(self, number):
+        accounts = self.fetch_accounts()
+        for account in accounts:
+            if account.account_number == number:
+                return account
+
+        return None
+
     def logout(self):
         r = self._fetch(
             self.logout_url,
@@ -107,10 +115,18 @@ class BanruralBankAccount(AbstractBankAccount):
         document_number = splitted[3]
         ammount = splitted[5].replace(",", "")
         is_credit = splitted[4] == "C"
+        alternative_transaction_id = splitted[10]
         m = Money(amount=ammount, currency="GTQ")
         if not is_credit:
             m = -1 * m
-        return Movement(self, document_number, date, description, m)
+        return Movement(
+            self,
+            document_number,
+            date,
+            description,
+            m,
+            alternative_transaction_id=alternative_transaction_id,
+        )
 
     def _convert_date_to_txt_format(self, date):
         return date.strftime("%d/%m/%Y")
