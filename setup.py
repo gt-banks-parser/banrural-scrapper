@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="banrural_bank_parser_gt",
-    version="0.1.1",
+    version="0.2.0",
     author="Carlos Simon",
     author_email="dev@csimon.dev",
     description="Banrural Parser",
