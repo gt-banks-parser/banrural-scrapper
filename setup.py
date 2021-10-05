@@ -22,10 +22,8 @@ setup(
         "Intended Audience :: Financial and Insurance Industry",
         "Intended Audience :: Information Technology",
         "Topic :: Office/Business :: Financial",
-        "Topic :: Utilities"
-    ], 
+        "Topic :: Utilities",
+    ],
     python_requires=">=3.6",
-    install_requires=[
-        "bank_base_gt>=0.2"
-    ]
+    install_requires=["bank_base_gt>=0.3"],
 )
