@@ -11,6 +11,7 @@ import random
 import string
 from money import Money
 import time
+import datetime
 
 BANRURAL_ERRORS = {
     "INVALID_CREDENTIALS": " Nombre de usuario o credenciales de autentificación inválidas"
@@ -110,7 +111,7 @@ class BanruralBankAccount(AbstractBankAccount):
         splitted = line.split(";")
         if len(splitted) <= 6:
             return None
-        date = splitted[0]
+        date = datetime.datetime.strptime(splitted[0], "%d/%m/%Y")
         description = splitted[2]
         document_number = splitted[3]
         ammount = splitted[5].replace(",", "")
@@ -154,7 +155,8 @@ class BanruralBankAccount(AbstractBankAccount):
             form_data = self._get_initial_dict(start_date, end_date)
         headers = type(self)._DEFAULT_HEADERS
         bs = BeautifulSoup(
-            self.bank._fetch(self.bank.movements_url, form_data, headers)
+            self.bank._fetch(self.bank.movements_url, form_data, headers),
+            features="html.parser",
         )
         submit = bs.findAll("input", {"value": "SIGUIENTE"})
         form = bs.findAll("form")
