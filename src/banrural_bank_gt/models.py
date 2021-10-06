@@ -4,6 +4,7 @@ from bank_base_gt import (
     Bank,
     InvalidCredentialsException,
     Movement,
+    MovementPageNonAvailable,
 )
 from bs4 import BeautifulSoup
 from urllib.parse import parse_qs, quote_plus
@@ -12,10 +13,16 @@ import string
 from money import Money
 import time
 import datetime
+import logging
+import sys
+
 
 BANRURAL_ERRORS = {
     "INVALID_CREDENTIALS": " Nombre de usuario o credenciales de autentificación inválidas"
 }
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 
 
 class BanruralBaseBank(BaseBank):
@@ -43,6 +50,7 @@ class BanruralBank(Bank):
         bs = BeautifulSoup(r, features="html.parser")
         error_field = bs.find("td", {"class": "txt_normal"})
         if error_field and BANRURAL_ERRORS["INVALID_CREDENTIALS"] in error_field.string:
+            logger.error("Invalid Credentials: {0}".format(error_field.string))
             raise InvalidCredentialsException(error_field.string)
 
         return True
@@ -67,6 +75,7 @@ class BanruralBank(Bank):
             account = BanruralBankAccount(
                 self, account_num, alias, account_type, currency, internal_reference
             )
+            logger.info("Found new account with number {0}".format(account_num))
             accounts.append(account)
         return accounts
 
@@ -148,9 +157,14 @@ class BanruralBankAccount(AbstractBankAccount):
             "hdFechaFinal": datehd_query_end,
             "hdArchivo": type(self)._FILE_NAME,
         }
+        logger.info(
+            "Will request MOVEMENTS with this initial data {0}".format(form_data)
+        )
         return form_data
 
-    def _iterate_all_pages(self, start_date, end_date, form_data=None):
+    def _iterate_all_pages(
+        self, start_date, end_date, form_data=None, previous_page=None
+    ):
         if form_data is None:
             form_data = self._get_initial_dict(start_date, end_date)
         headers = type(self)._DEFAULT_HEADERS
@@ -160,21 +174,36 @@ class BanruralBankAccount(AbstractBankAccount):
         )
         submit = bs.findAll("input", {"value": "SIGUIENTE"})
         form = bs.findAll("form")
+        needs_to_exit = False
+        if len(form) == 0 and previous_page:
+            bs = previous_page
+            submit = bs.findAll("input", {"value": "SIGUIENTE"})
+            form = bs.findAll("form")
+            needs_to_exit = True
+
         fields = form[0].findAll("input")
         form_data = dict((field.get("name"), field.get("value")) for field in fields)
-        if submit:
-            self._iterate_all_pages(start_date, end_date, form_data)
+        logger.info(
+            "Will request MOVEMENTS with this initial data {0}".format(form_data)
+        )
+
+        if submit and not needs_to_exit:
+            logger.info("Downloading next movement page")
+            self._iterate_all_pages(start_date, end_date, form_data, previous_page=bs)
 
         file_name = bs.findAll("input")[-1]["onclick"].split("/")[-1][0:-1]
         return file_name
 
     def fetch_movements(self, start_date, end_date):
         file_name = self._iterate_all_pages(start_date, end_date)
+        logger.info("Finished fetching all pages")
         txt_file = self.bank._fetch("https://www.banrural.com.gt/corp/ofc/" + file_name)
+        logger.info("Downloaded TXT file with movements")
         lines = txt_file.decode("utf-8").split("\r\n")
         movements = []
         for line in lines:
             movement = self.process_mov_line(line)
             if movement:
                 movements.append(movement)
+        logger.info("Finished processing all movements")
         return movements
