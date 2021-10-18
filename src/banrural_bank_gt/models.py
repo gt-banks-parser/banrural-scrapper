@@ -6,6 +6,7 @@ from bank_base_gt import (
     Movement,
     MovementPageNonAvailable,
 )
+from bank_base_gt.bank import ChangePasswordRequired
 from bs4 import BeautifulSoup
 from urllib.parse import parse_qs, quote_plus
 import random
@@ -18,7 +19,8 @@ import sys
 
 
 BANRURAL_ERRORS = {
-    "INVALID_CREDENTIALS": " Nombre de usuario o credenciales de autentificación inválidas"
+    "INVALID_CREDENTIALS": " Nombre de usuario o credenciales de autentificación inválidas",
+    "CHANGE_PASSWORD": "CAMBIO DE CLAVE REQUERIDO, 90 DIAS DESDE LA ULTIMA MODIFICACION",
 }
 
 logger = logging.getLogger(__name__)
@@ -48,10 +50,19 @@ class BanruralBank(Bank):
             },
         )
         bs = BeautifulSoup(r, features="html.parser")
-        error_field = bs.find("td", {"class": "txt_normal"})
-        if error_field and BANRURAL_ERRORS["INVALID_CREDENTIALS"] in error_field.string:
-            logger.error("Invalid Credentials: {0}".format(error_field.string))
-            raise InvalidCredentialsException(error_field.string)
+        error_fields = [
+            bs.find("td", {"class": "txt_normal"}),
+            bs.find("td", {"class": "txt_normal_bold"}),
+        ]
+        error_fields = error_fields[error_fields is not None]
+        for field in error_fields:
+            logger.error("TXT Field {0}".format(field.string))
+            if field and BANRURAL_ERRORS["INVALID_CREDENTIALS"] in field.string:
+                logger.error("Invalid Credentials: {0}".format(field.string))
+                raise InvalidCredentialsException(field.string)
+            elif field and BANRURAL_ERRORS["CHANGE_PASSWORD"] in field.string:
+                logger.error("Change of password required")
+                raise ChangePasswordRequired(field.string)
 
         return True
 
