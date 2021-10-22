@@ -55,19 +55,21 @@ class BanruralBank(Bank):
             bs.find("td", {"class": "txt_normal_bold"}),
         ]
         error_fields = error_fields[error_fields is not None]
-        for field in error_fields:
-            logger.error("TXT Field {0}".format(field.string))
-            if field and BANRURAL_ERRORS["INVALID_CREDENTIALS"] in field.string:
-                logger.error("Invalid Credentials: {0}".format(field.string))
-                raise InvalidCredentialsException(field.string)
-            elif field and BANRURAL_ERRORS["CHANGE_PASSWORD"] in field.string:
-                logger.error("Change of password required")
-                raise ChangePasswordRequired(field.string)
-
+        if error_fields:
+            for field in error_fields:
+                logger.error("TXT Field {0}".format(field.string))
+                if field and BANRURAL_ERRORS["INVALID_CREDENTIALS"] in field.string:
+                    logger.error("Invalid Credentials: {0}".format(field.string))
+                    raise InvalidCredentialsException(field.string)
+                elif field and BANRURAL_ERRORS["CHANGE_PASSWORD"] in field.string:
+                    logger.error("Change of password required")
+                    raise ChangePasswordRequired(field.string)
+        logger.info("Log in finished succesfully")
         return True
 
     def fetch_accounts(self):
         accounts = []
+        logger.info("Will start to fetch accounts")
         r = self._fetch(self.accounts_url)
         bs = BeautifulSoup(r, features="html.parser")
         account_table = bs.findAll("tr", {"class": "tabledata_gray"})
@@ -88,6 +90,8 @@ class BanruralBank(Bank):
             )
             logger.info("Found new account with number {0}".format(account_num))
             accounts.append(account)
+        logger.info("Finish fetching accounts")
+
         return accounts
 
     def get_account(self, number):
@@ -103,6 +107,8 @@ class BanruralBank(Bank):
             self.logout_url,
             headers={"Referer": "https://www.banrural.com.gt/corp/a/menu_nuevo.asp"},
         )
+        logger.info("Did logout")
+
         return True
 
     def _build_internal_reference_account(self, url):
