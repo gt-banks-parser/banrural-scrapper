@@ -1,24 +1,23 @@
+import datetime
+import logging
+import math
+import operator
+import random
+import string
+import sys
+from functools import reduce
+from urllib.parse import parse_qs
+
 from bank_base_gt import (
     AbstractBankAccount,
-    BaseBank,
     Bank,
+    BaseBank,
     InvalidCredentialsException,
     Movement,
-    MovementPageNonAvailable,
 )
 from bank_base_gt.bank import ChangePasswordRequired
 from bs4 import BeautifulSoup, element
-from urllib.parse import parse_qs, quote_plus
-import random
-import string
 from money import Money
-import time
-import datetime
-import logging
-import sys
-import math
-import operator
-from functools import reduce
 
 BANRURAL_ERRORS = {
     "INVALID_CREDENTIALS": " Nombre de usuario o credenciales de autentificación inválidas",
@@ -46,25 +45,25 @@ class BanruralBank(Bank):
         super().__init__("Banrural", BanruralBaseBank(), credentials)
 
     def login(self):
-        r = self._fetch(
+        login_response = self._fetch(
             self.login_url,
             {
                 "UserName": self.credentials.username,
                 "password": self.credentials.password,
             },
         )
-        bs = BeautifulSoup(r, features="html.parser")
+        login_bs = BeautifulSoup(login_response, features="html.parser")
         error_fields = [
-            bs.find("td", {"class": "txt_normal"}),
-            bs.find("td", {"class": "txt_normal_bold"}),
-            bs.find("script"),
+            login_bs.find("td", {"class": "txt_normal"}),
+            login_bs.find("td", {"class": "txt_normal_bold"}),
+            login_bs.find("script"),
         ]
         error_fields = error_fields[error_fields is not None]
         if error_fields:
             for field in error_fields:
-                logger.error("TXT Field {0}".format(field.string))
+                logger.error("TXT Field %s", field.string)
                 if field and BANRURAL_ERRORS["INVALID_CREDENTIALS"] in field.string:
-                    logger.error("Invalid Credentials: {0}".format(field.string))
+                    logger.error("Invalid Credentials: %s", field.string)
                     raise InvalidCredentialsException(field.string)
                 elif field and BANRURAL_ERRORS["CHANGE_PASSWORD"] in field.string:
                     logger.error("Change of password required")
@@ -77,9 +76,9 @@ class BanruralBank(Bank):
     def fetch_accounts(self):
         accounts = []
         logger.info("Will start to fetch accounts")
-        r = self._fetch(self.accounts_url)
-        bs = BeautifulSoup(r, features="html.parser")
-        account_table = bs.findAll("tr", {"class": "tabledata_gray"})
+        response = self._fetch(self.accounts_url)
+        accounts_bs = BeautifulSoup(response, features="html.parser")
+        account_table = accounts_bs.findAll("tr", {"class": "tabledata_gray"})
         for account_row in account_table:
             text_of_account = account_row.findAll("span")
             alias = text_of_account[0].string.strip()
@@ -95,7 +94,7 @@ class BanruralBank(Bank):
             account = BanruralBankAccount(
                 self, account_num, alias, account_type, currency, internal_reference
             )
-            logger.info("Found new account with number {0}".format(account_num))
+            logger.info("Found new account with number %s", account_num)
             accounts.append(account)
         logger.info("Finish fetching accounts")
 
@@ -110,7 +109,7 @@ class BanruralBank(Bank):
         return None
 
     def logout(self):
-        r = self._fetch(
+        _ = self._fetch(
             self.logout_url,
             headers={"Referer": "https://www.banrural.com.gt/corp/a/menu_nuevo.asp"},
         )
@@ -148,24 +147,25 @@ class BanruralBankAccount(AbstractBankAccount):
             "bntTransmitir": "TRANSMITIR",
             "modovista": "TEXTO",
         }
-        logger.info(
-            "Will request MOVEMENTS with this initial data {0}".format(form_data)
-        )
+        logger.info("Will request MOVEMENTS with this initial data %s", form_data)
         return form_data
 
     def _iterate_all_pages(self, start_date, end_date, form_data=None):
         if form_data is None:
             form_data = self._get_initial_dict(start_date, end_date)
         headers = type(self)._DEFAULT_HEADERS
-        bs = BeautifulSoup(
+        movements_bs = BeautifulSoup(
             self.bank._fetch(self.bank.movements_url, form_data, headers),
             features="html.parser",
         )
         movements = []
-        error = bs.find("div", {"class": "instructions"})
+        error = movements_bs.find("div", {"class": "instructions"})
         if error and BANRURAL_ERRORS["NO_MOVEMENTS_FOR_DATE"] in error.text:
             return []
-        table = bs.findAll("table", {"width": "80%"})[2]
+        tables = movements_bs.findAll("table", {"width": "80%"})
+        if len(tables) < 3:
+            return []
+        table = movements_bs.findAll("table", {"width": "80%"})[2]
         if not table:
             return []
         rows = table.findAll(True, {"class": ["tabledata_gray", "tabledata_white"]})
