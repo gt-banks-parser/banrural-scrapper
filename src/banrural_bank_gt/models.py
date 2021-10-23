@@ -171,7 +171,7 @@ class BanruralBankAccount(AbstractBankAccount):
         rows = table.findAll(True, {"class": ["tabledata_gray", "tabledata_white"]})
         for row in rows:
             columns = row.findAll("td")
-            date = columns[0].text
+            date = datetime.datetime.strptime(columns[0].text, "%d/%m/%Y")
             description = columns[2].text
             id_doc = columns[3].text
             id_doc_2 = columns[4].text
