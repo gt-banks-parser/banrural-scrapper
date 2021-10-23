@@ -7,7 +7,7 @@ from bank_base_gt import (
     MovementPageNonAvailable,
 )
 from bank_base_gt.bank import ChangePasswordRequired
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, element
 from urllib.parse import parse_qs, quote_plus
 import random
 import string
@@ -16,11 +16,15 @@ import time
 import datetime
 import logging
 import sys
-
+import math
+import operator
+from functools import reduce
 
 BANRURAL_ERRORS = {
     "INVALID_CREDENTIALS": " Nombre de usuario o credenciales de autentificación inválidas",
     "CHANGE_PASSWORD": "CAMBIO DE CLAVE REQUERIDO, 90 DIAS DESDE LA ULTIMA MODIFICACION",
+    "USER_LOCKED": "USUARIO BLOQUEADO TEMPORALMENTE",
+    "NO_MOVEMENTS_FOR_DATE": "NO EXISTEN MOVIMIENTOS PARA ESTA CUENTA EN LAS FECHAS REQUERIDAS",
 }
 
 logger = logging.getLogger(__name__)
@@ -32,7 +36,7 @@ class BanruralBaseBank(BaseBank):
         super().__init__(
             login_url="https://www.banrural.com.gt/corp/a/principal.asp",
             accounts_url="https://www.banrural.com.gt/corp/a/consulta_saldos.asp",
-            movements_url="https://www.banrural.com.gt/corp/a/consulta_movimientos_resp.asp",
+            movements_url="https://www.banrural.com.gt/corp/a/estados_cuenta_texto_resp.asp",
             logout_url="https://www.banrural.com.gt/corp/a/default.asp",
         )
 
@@ -53,7 +57,9 @@ class BanruralBank(Bank):
         error_fields = [
             bs.find("td", {"class": "txt_normal"}),
             bs.find("td", {"class": "txt_normal_bold"}),
+            bs.find("script"),
         ]
+        print(bs)
         error_fields = error_fields[error_fields is not None]
         if error_fields:
             for field in error_fields:
@@ -64,6 +70,8 @@ class BanruralBank(Bank):
                 elif field and BANRURAL_ERRORS["CHANGE_PASSWORD"] in field.string:
                     logger.error("Change of password required")
                     raise ChangePasswordRequired(field.string)
+                elif field and BANRURAL_ERRORS["USER_LOCKED"] in field.string:
+                    raise InvalidCredentialsException(field.string)
         logger.info("Log in finished succesfully")
         return True
 
@@ -113,47 +121,20 @@ class BanruralBank(Bank):
 
     def _build_internal_reference_account(self, url):
         query_params = parse_qs(url.split("?")[1], keep_blank_values=True)
-        return "{0};{1};{2};{3};{4}".format(
+        return "{0}|{1}|{2}|{3}".format(
+            query_params["alias"][0],
             query_params["cta"][0],
             query_params["moneda"][0],
-            query_params["producto"][0],
-            quote_plus(query_params["alias"][0]),
             query_params["descmoneda"][0],
         )
 
 
 class BanruralBankAccount(AbstractBankAccount):
     _FILE_NAME = "".join(random.choices(string.digits, k=8))
+    PAGINATION_SIZE = 90
     _DEFAULT_HEADERS = {
         "Referer": "https://www.banrural.com.gt/corp/a/consulta_movimientos.asp"
     }
-
-    def _convert_date_format(self, date_string):
-        first_two = date_string[0:2]
-        second_two = date_string[3:5]
-        return "{0}/{1}/{2}".format(second_two, first_two, date_string[6:])
-
-    def process_mov_line(self, line):
-        splitted = line.split(";")
-        if len(splitted) <= 6:
-            return None
-        date = datetime.datetime.strptime(splitted[0], "%d/%m/%Y")
-        description = splitted[2]
-        document_number = splitted[3]
-        ammount = splitted[5].replace(",", "")
-        is_credit = splitted[4] == "C"
-        alternative_transaction_id = splitted[10]
-        m = Money(amount=ammount, currency="GTQ")
-        if not is_credit:
-            m = -1 * m
-        return Movement(
-            self,
-            document_number,
-            date,
-            description,
-            m,
-            alternative_transaction_id=alternative_transaction_id,
-        )
 
     def _convert_date_to_txt_format(self, date):
         return date.strftime("%d/%m/%Y")
@@ -161,27 +142,19 @@ class BanruralBankAccount(AbstractBankAccount):
     def _get_initial_dict(self, start_date, end_date):
         date_query_start = self._convert_date_to_txt_format(start_date)
         date_query_end = self._convert_date_to_txt_format(end_date)
-        datehd_query_start = self._convert_date_format(date_query_start)
-        datehd_query_end = self._convert_date_format(date_query_end)
         form_data = {
             "ddmCuentas": self.account_bank_reference,
             "txtfechainicial": date_query_start,
             "txtfechafinal": date_query_end,
-            "transmitir": "TRANSMITIR",
-            "HSec": 40,
-            "HSecAlt": 3000,
-            "hdFechaInicial": datehd_query_start,
-            "hdFechaFinal": datehd_query_end,
-            "hdArchivo": type(self)._FILE_NAME,
+            "bntTransmitir": "TRANSMITIR",
+            "modovista": "TEXTO",
         }
         logger.info(
             "Will request MOVEMENTS with this initial data {0}".format(form_data)
         )
         return form_data
 
-    def _iterate_all_pages(
-        self, start_date, end_date, form_data=None, previous_page=None
-    ):
+    def _iterate_all_pages(self, start_date, end_date, form_data=None):
         if form_data is None:
             form_data = self._get_initial_dict(start_date, end_date)
         headers = type(self)._DEFAULT_HEADERS
@@ -189,38 +162,54 @@ class BanruralBankAccount(AbstractBankAccount):
             self.bank._fetch(self.bank.movements_url, form_data, headers),
             features="html.parser",
         )
-        submit = bs.findAll("input", {"value": "SIGUIENTE"})
-        form = bs.findAll("form")
-        needs_to_exit = False
-        if len(form) == 0 and previous_page:
-            bs = previous_page
-            submit = bs.findAll("input", {"value": "SIGUIENTE"})
-            form = bs.findAll("form")
-            needs_to_exit = True
+        print(bs)
+        movements = []
+        error = bs.find("div", {"class": "instructions"})
+        if error and BANRURAL_ERRORS["NO_MOVEMENTS_FOR_DATE"] in error.text:
+            return []
+        table = bs.findAll("table", {"width": "80%"})[2]
+        if not table:
+            return []
+        rows = table.findAll(True, {"class": ["tabledata_gray", "tabledata_white"]})
+        for row in rows:
+            columns = row.findAll("td")
+            date = columns[0].text
+            description = columns[2].text
+            id_doc = columns[3].text
+            id_doc_2 = columns[4].text
+            ammount = (
+                float(columns[5].text.replace(",", ""))
+                if columns[5].text != "0.00"
+                else float(columns[6].text.replace(",", "")) * -1
+            )
+            money = Money(amount=ammount, currency="GTQ")
+            print(date, description, id_doc, id_doc_2, money)
+            mov = Movement(self, id_doc, date, description, money, id_doc_2)
+            movements.append(mov)
+        return movements
 
-        fields = form[0].findAll("input")
-        form_data = dict((field.get("name"), field.get("value")) for field in fields)
-        logger.info(
-            "Will request MOVEMENTS with this initial data {0}".format(form_data)
-        )
-
-        if submit and not needs_to_exit:
-            logger.info("Downloading next movement page")
-            self._iterate_all_pages(start_date, end_date, form_data, previous_page=bs)
-
-        file_name = bs.findAll("input")[-1]["onclick"].split("/")[-1][0:-1]
-        return file_name
+    def _get_date_ranges_to_search(self, start_date, end_date):
+        timedelta = end_date - start_date
+        days_timedelta = timedelta.days
+        number_of_iterations = math.ceil(days_timedelta / type(self).PAGINATION_SIZE)
+        calculated_start_date = start_date
+        date_ranges = []
+        for _ in range(0, number_of_iterations):
+            calculated_end_range = calculated_start_date + datetime.timedelta(
+                days=type(self).PAGINATION_SIZE
+            )
+            if calculated_end_range > end_date:
+                calculated_end_range = end_date
+            date_ranges.append((calculated_start_date, calculated_end_range))
+            calculated_start_date = calculated_end_range + datetime.timedelta(days=1)
+        print(days_timedelta)
+        print(date_ranges)
+        return date_ranges
 
     def fetch_movements(self, start_date, end_date):
-        file_name = self._iterate_all_pages(start_date, end_date)
-        logger.info("Finished fetching all pages")
-        txt_file = self.bank._fetch("https://www.banrural.com.gt/corp/ofc/" + file_name)
-        logger.info("Downloaded TXT file with movements")
-        lines = txt_file.decode("utf-8").split("\r\n")
-        movements = []
-        for line in lines:
-            movement = self.process_mov_line(line)
-            if movement:
-                movements.append(movement)
-        logger.info("Finished processing all movements")
-        return movements
+        dates_to_search = self._get_date_ranges_to_search(start_date, end_date)
+        movments = list(
+            map(lambda date: self._iterate_all_pages(date[0], date[1]), dates_to_search)
+        )
+        flatten = reduce(operator.concat, movments, [])
+        return flatten
