@@ -59,7 +59,6 @@ class BanruralBank(Bank):
             bs.find("td", {"class": "txt_normal_bold"}),
             bs.find("script"),
         ]
-        print(bs)
         error_fields = error_fields[error_fields is not None]
         if error_fields:
             for field in error_fields:
@@ -162,7 +161,6 @@ class BanruralBankAccount(AbstractBankAccount):
             self.bank._fetch(self.bank.movements_url, form_data, headers),
             features="html.parser",
         )
-        print(bs)
         movements = []
         error = bs.find("div", {"class": "instructions"})
         if error and BANRURAL_ERRORS["NO_MOVEMENTS_FOR_DATE"] in error.text:
@@ -183,7 +181,6 @@ class BanruralBankAccount(AbstractBankAccount):
                 else float(columns[6].text.replace(",", "")) * -1
             )
             money = Money(amount=ammount, currency="GTQ")
-            print(date, description, id_doc, id_doc_2, money)
             mov = Movement(self, id_doc, date, description, money, id_doc_2)
             movements.append(mov)
         return movements
@@ -202,8 +199,6 @@ class BanruralBankAccount(AbstractBankAccount):
                 calculated_end_range = end_date
             date_ranges.append((calculated_start_date, calculated_end_range))
             calculated_start_date = calculated_end_range + datetime.timedelta(days=1)
-        print(days_timedelta)
-        print(date_ranges)
         return date_ranges
 
     def fetch_movements(self, start_date, end_date):
