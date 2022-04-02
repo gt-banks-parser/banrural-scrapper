@@ -6,8 +6,8 @@ import random
 import string
 import sys
 from functools import reduce
-from urllib.parse import parse_qs
-
+from urllib.parse import parse_qs, urlencode
+import time
 from bank_base_gt import (
     AbstractBankAccount,
     Bank,
@@ -44,8 +44,8 @@ class BanruralCorporateBaseBank(BaseBank):
     def __init__(self):
         super().__init__(
             login_url="https://bvnegocios.banrural.com.gt/corp/pages/jsp-ns/login-corp.jsp",
-            accounts_url="https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/GetConsolidatedBalanceMonetarioAction.action",
-            movements_url="https://www.banrural.com.gt/corp/a/estados_cuenta_texto_resp.asp",
+            accounts_url="https://bvnegocios.banrural.com.gt/corp/pages/common/AccountHistoryLookupBoxAction.action",
+            movements_url="https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/GetTransactionsAction.action",
             logout_url="https://bvnegocios.banrural.com.gt/corp/web/js/i18n/LoginJavaScript.properties",
         )
 
@@ -55,7 +55,9 @@ class BanruralCorporateBank(Bank):
         super().__init__("Banrural", BanruralCorporateBaseBank(), credentials)
         self.login_1_url = "https://bvnegocios.banrural.com.gt/corp/pages/jsp-ns/submitUserNameAndCustID.action"
         self.login_2_url = "https://bvnegocios.banrural.com.gt/corp/pages/jsp-ns/loginUserRedirect.action"
-
+        self.accounts_get_url = " https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/accountbalance_index.jsp"
+        self.base_host = "https://bvnegocios.banrural.com.gt"
+    
     def _get_csrf(self, url):
         response = self._fetch(url)
         fetch_bs = BeautifulSoup(response, features="html.parser")
@@ -74,7 +76,6 @@ class BanruralCorporateBank(Bank):
                 "struts.validateOnly": True,
             },
         )
-        print(login1_response)
 
         login2_response = self._fetch(
             self.login_2_url,
@@ -84,12 +85,53 @@ class BanruralCorporateBank(Bank):
                 "CSRF_TOKEN": login_csrf,
             },
         )
-
+    
+    def _get_url_for_getting_accounts_url(self):
+        get_account_url = self._fetch(self.accounts_get_url)
+        get_account_url_bs = BeautifulSoup(get_account_url, features="html.parser")
+        scripts = get_account_url_bs.find_all("script")
+        for script in scripts:
+            if script.string and 'consolidatedbalance_monetario_grid' in script.string:
+                variable_parts = script.string.split("=")
+                for idx, part in enumerate(variable_parts):
+                    if 'consolidatedbalance_monetario_grid' in part:
+                        url = part + '=' + variable_parts[idx+1]
+                        url = url.split("\"")[1]
+                        url = self.base_host + url #+ "&_=" + str(round(time.time() * 1000)) + "&_search=false&nd=1648912961219&rows=10&page=1&sidx=&sord=asc" 
+                        return url
+    def _get_url_for_accounts(self, fetch_accounts_url):
+        account_info = self._fetch(fetch_accounts_url)
+        account_info_bs = BeautifulSoup(account_info, features="html.parser")
+        scripts = account_info_bs.find_all('script')
+        for script in scripts:
+            if (script.string and 'options_consolidatedBalanceMonetarioSummaryID.url =' in script.string):
+                variable_part = script.string.split("options_consolidatedBalanceMonetarioSummaryID.url =")
+                url = variable_part[1].split(";")[0].replace("\"", "") +  "&_=" + str(round(time.time() * 1000)) + "&_search=false&nd=1648912961219&rows=10&page=1&sidx=&sord=asc" 
+                url = url.strip()
+                url = self.base_host + url
+                return url
+        
     def fetch_accounts(self):
-        self._fetch(self.accounts_url)
+       
+        fetch_accounts_url = self._get_url_for_getting_accounts_url()
+        url_accounts = self._get_url_for_accounts(fetch_accounts_url)
+        results = self._fetch(url_accounts, json=True)
+        accounts = []
+        for account in results['gridModel']:
 
+            account = BanruralBankCorporateAccount(
+                self, account['ID'], account['nickName'], account['type'], account['currencyCode'],  account['routingNum']
+            )
+            accounts.append(account)
+        return accounts
+        
     def get_account(self, number):
-        pass
+        accounts = self.fetch_accounts()
+        for account in accounts:
+            if account.account_number == number:
+                return account
+
+        return None
 
     def logout(self):
         _ = self._fetch(
@@ -186,6 +228,49 @@ class BanruralBank(Bank):
             query_params["descmoneda"][0],
         )
 
+
+class BanruralBankCorporateAccount(AbstractBankAccount):
+    def _make_query_for_date(self, start_date, end_date, token, url):
+        body = {
+        "CSRF_TOKEN": token,
+        'accountGroup': 1,
+        'corporateAccount': '{0},1000,{1},1,false'.format(self.account_number, self.account_bank_reference),
+        'StartDateSessionValue': '03/03/2022',
+        'EndDateSessionValue': '01/04/2022',
+        'GetPagedTransactions.StartDate': '03/03/2022',
+        'GetPagedTransactions.EndDate': '01/04/2022',
+        'TSTransactionType': 'AllTransactionTypes',
+        'struts.enableJSONValidation': True,
+        'struts.validateOnly': True
+        }
+        self.bank._fetch(url, body)
+        
+    def fetch_movements(self, start_date, end_date):
+        self.main_url = "https://bvnegocios.banrural.com.gt/corp/pages/jsp/home/index.jsp"
+        self.search_results = 'https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/getSearchResults.action'
+        
+        results = self.bank._fetch(self.main_url)
+        results_bs = BeautifulSoup(results, features="html.parser")
+        for script in results_bs.find_all('script'):
+            if (script.string and 'curThemeTitle,CSRF_TOKEN:' in script.string):
+                text = script.string.split('curThemeTitle,CSRF_TOKEN:')
+                print(text)
+        # self._make_query_for_date(start_date, end_date, token, self.search_results)
+        # query_dict = { 'accountIndex': 1,
+        #             'setAccountID': self.account_number,
+        #             'collectionName': 'Transactions',
+        #             'GridURLs': 'GRID_accountHistory',
+        #             '_': str(round(time.time() * 1000)),
+        #             '_search': False,
+        #             'rows': 10000,
+        #             'page': 1,
+        #             'sidx': 'date',
+        #             'sord': 'asc',
+        # }
+        # query = urlencode(query_dict)
+        # print(query)
+        #results = self.bank._fetch(self.bank.movements_url)
+        
 
 class BanruralBankAccount(AbstractBankAccount):
     _FILE_NAME = "".join(random.choices(string.digits, k=8))
