@@ -40,6 +40,66 @@ class BanruralBaseBank(BaseBank):
         )
 
 
+class BanruralCorporateBaseBank(BaseBank):
+    def __init__(self):
+        super().__init__(
+            login_url="https://bvnegocios.banrural.com.gt/corp/pages/jsp-ns/login-corp.jsp",
+            accounts_url="https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/GetConsolidatedBalanceMonetarioAction.action",
+            movements_url="https://www.banrural.com.gt/corp/a/estados_cuenta_texto_resp.asp",
+            logout_url="https://bvnegocios.banrural.com.gt/corp/web/js/i18n/LoginJavaScript.properties",
+        )
+
+
+class BanruralCorporateBank(Bank):
+    def __init__(self, credentials):
+        super().__init__("Banrural", BanruralCorporateBaseBank(), credentials)
+        self.login_1_url = "https://bvnegocios.banrural.com.gt/corp/pages/jsp-ns/submitUserNameAndCustID.action"
+        self.login_2_url = "https://bvnegocios.banrural.com.gt/corp/pages/jsp-ns/loginUserRedirect.action"
+
+    def _get_csrf(self, url):
+        response = self._fetch(url)
+        fetch_bs = BeautifulSoup(response, features="html.parser")
+        csrf = fetch_bs.find("input", {"name": "CSRF_TOKEN"})
+        return csrf["value"]
+
+    def login(self):
+        login_csrf = self._get_csrf(self.login_url)
+        login1_response = self._fetch(
+            self.login_1_url,
+            {
+                "CSRF_TOKEN": login_csrf,
+                "CustomerID": "uselessCustID",
+                "UserName": self.credentials.username,
+                "struts.enableJSONValidation": True,
+                "struts.validateOnly": True,
+            },
+        )
+        print(login1_response)
+
+        login2_response = self._fetch(
+            self.login_2_url,
+            {
+                "CSRF_TOKEN": login_csrf,
+                "Password": self.credentials.password,
+                "CSRF_TOKEN": login_csrf,
+            },
+        )
+
+    def fetch_accounts(self):
+        self._fetch(self.accounts_url)
+
+    def get_account(self, number):
+        pass
+
+    def logout(self):
+        _ = self._fetch(
+            self.logout_url,
+        )
+        logger.info("Did logout")
+
+        return True
+
+
 class BanruralBank(Bank):
     def __init__(self, credentials):
         super().__init__("Banrural", BanruralBaseBank(), credentials)
