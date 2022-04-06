@@ -347,7 +347,7 @@ class BanruralBankCorporateAccount(AbstractBankAccount):
             reference_number = None
             if "referenceNumber" in mov:
                 reference_number = mov['referenceNumber']
-            movement = Movement(self, mov["ID"], date, description, ammount, reference_number)
+            movement = Movement(self, mov["customerReferenceNumber"], date, description, ammount, reference_number)
             movements.append(movement)
         return movements
         
