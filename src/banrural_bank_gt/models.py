@@ -337,10 +337,10 @@ class BanruralBankCorporateAccount(AbstractBankAccount):
         results = self.bank._fetch(full_url, json=True)
         movements = []
         for mov in results["gridModel"]:
-            if mov['creditNoSymbol']:
-                ammount = float(mov["creditNoSymbol"].replace(",", ""))
-            if mov["debitNoSymbol"]:
-                ammount = float(mov["debitNoSymbol"].replace(",", "")) * -1
+            if mov['map']['auxCreditDebitNoteMin'] == 'debita':
+                ammount = mov['map']['auxCreditDebitValue'] * -1
+            else:
+                ammount = mov['map']['auxCreditDebitValue']
             ammount = Money(amount=ammount, currency="GTQ")
             description = mov["description"] 
             date = datetime.datetime.strptime(mov["date"], "%d/%m/%Y")
