@@ -287,9 +287,9 @@ class BanruralBankCorporateAccount(AbstractBankAccount):
                 'corporateAccount':  '{0},1000,{1},1,false'.format(self.account_number, self.account_bank_reference),
                 'StartDateSessionValue': '07/03/2022',
                 'EndDateSessionValue': '05/04/2022',
-                'GetPagedTransactions.StartDate': '',
-                'GetPagedTransactions.EndDate': '',
-                'GetPagedTransactions.DateRangeValue': 'Last Week',
+                'GetPagedTransactions.StartDate':  '07/03/2022',
+                'GetPagedTransactions.EndDate':'05/04/2022',
+                'GetPagedTransactions.DateRangeValue': '',
                 'ammountStart': '',
                 'ammountEnd': '',
                 'searchDescription': '',
@@ -334,9 +334,22 @@ class BanruralBankCorporateAccount(AbstractBankAccount):
         }
         query = urlencode(query_dict)
         full_url = self.bank.movements_url + "?" + query
-        print("url" + full_url)
-        results = self.bank._fetch(full_url)
-        print(results)
+        results = self.bank._fetch(full_url, json=True)
+        movements = []
+        for mov in results["gridModel"]:
+            if mov['creditNoSymbol']:
+                ammount = float(mov["creditNoSymbol"].replace(",", ""))
+            if mov["debitNoSymbol"]:
+                ammount = float(mov["debitNoSymbol"].replace(",", "")) * -1
+            ammount = Money(amount=ammount, currency="GTQ")
+            description = mov["description"] 
+            date = datetime.datetime.strptime(mov["date"], "%d/%m/%Y")
+            reference_number = None
+            if "referenceNumber" in mov:
+                reference_number = mov['referenceNumber']
+            movement = Movement(self, mov["ID"], date, description, ammount, reference_number)
+            movements.append(movement)
+        return movements
         
 
 class BanruralBankAccount(AbstractBankAccount):
