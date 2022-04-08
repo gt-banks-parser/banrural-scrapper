@@ -57,7 +57,7 @@ class BanruralCorporateBank(Bank):
         self.login_2_url = "https://bvnegocios.banrural.com.gt/corp/pages/jsp-ns/loginUserRedirect.action"
         self.accounts_get_url = " https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/accountbalance_index.jsp"
         self.base_host = "https://bvnegocios.banrural.com.gt"
-    
+
     def _get_csrf(self, url):
         response = self._fetch(url)
         fetch_bs = BeautifulSoup(response, features="html.parser")
@@ -85,46 +85,65 @@ class BanruralCorporateBank(Bank):
                 "CSRF_TOKEN": login_csrf,
             },
         )
-    
+
     def _get_url_for_getting_accounts_url(self):
         get_account_url = self._fetch(self.accounts_get_url)
         get_account_url_bs = BeautifulSoup(get_account_url, features="html.parser")
         scripts = get_account_url_bs.find_all("script")
         for script in scripts:
-            if script.string and 'consolidatedbalance_monetario_grid' in script.string:
+            if script.string and "consolidatedbalance_monetario_grid" in script.string:
                 variable_parts = script.string.split("=")
                 for idx, part in enumerate(variable_parts):
-                    if 'consolidatedbalance_monetario_grid' in part:
-                        url = part + '=' + variable_parts[idx+1]
-                        url = url.split("\"")[1]
-                        url = self.base_host + url #+ "&_=" + str(round(time.time() * 1000)) + "&_search=false&nd=1648912961219&rows=10&page=1&sidx=&sord=asc" 
+                    if "consolidatedbalance_monetario_grid" in part:
+                        url = part + "=" + variable_parts[idx + 1]
+                        url = url.split('"')[1]
+                        url = (
+                            self.base_host + url
+                        )  # + "&_=" + str(round(time.time() * 1000)) + "&_search=false&nd=1648912961219&rows=10&page=1&sidx=&sord=asc"
                         return url
+
     def _get_url_for_accounts(self, fetch_accounts_url):
         account_info = self._fetch(fetch_accounts_url)
         account_info_bs = BeautifulSoup(account_info, features="html.parser")
-        scripts = account_info_bs.find_all('script')
+        scripts = account_info_bs.find_all("script")
         for script in scripts:
-            if (script.string and 'options_consolidatedBalanceMonetarioSummaryID.url =' in script.string):
-                variable_part = script.string.split("options_consolidatedBalanceMonetarioSummaryID.url =")
-                url = variable_part[1].split(";")[0].replace("\"", "") +  "&_=" + str(round(time.time() * 1000)) + "&_search=false&nd=1648912961219&rows=10&page=1&sidx=&sord=asc" 
+            if (
+                script.string
+                and "options_consolidatedBalanceMonetarioSummaryID.url ="
+                in script.string
+            ):
+                variable_part = script.string.split(
+                    "options_consolidatedBalanceMonetarioSummaryID.url ="
+                )
+                url = (
+                    variable_part[1].split(";")[0].replace('"', "")
+                    + "&_="
+                    + str(round(time.time() * 1000))
+                    + "&_search=false&nd=1648912961219&rows=10&page=1&sidx=&sord=asc"
+                )
                 url = url.strip()
                 url = self.base_host + url
                 return url
-        
+
     def fetch_accounts(self):
-       
+
         fetch_accounts_url = self._get_url_for_getting_accounts_url()
         url_accounts = self._get_url_for_accounts(fetch_accounts_url)
         results = self._fetch(url_accounts, json=True)
         accounts = []
-        for account in results['gridModel']:
+        for account in results["gridModel"]:
 
             account = BanruralBankCorporateAccount(
-                self, account['ID'], account['nickName'], account['type'], account['currencyCode'],  account['routingNum']
+                self,
+                account["ID"],
+                account["nickName"],
+                account["type"],
+                account["currencyCode"],
+                account["routingNum"],
             )
             accounts.append(account)
         return accounts
-        
+
     def get_account(self, number):
         accounts = self.fetch_accounts()
         for account in accounts:
@@ -231,126 +250,147 @@ class BanruralBank(Bank):
 
 class BanruralBankCorporateAccount(AbstractBankAccount):
     def _make_query_for_date(self, start_date, end_date, token, url, cookies):
-        url_initial = 'https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/index.jsp'
-        body_initial = {
-            'CSRF_TOKEN': token,
-            'TransactionSearch': 'true'
-        }
+        url_initial = (
+            "https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/index.jsp"
+        )
+        body_initial = {"CSRF_TOKEN": token, "TransactionSearch": "true"}
         result = self.bank._fetch(url_initial, body_initial)
-        thx = result.split('THX1139=')[1].split(";")[0].replace("'", "")
+        thx = result.split("THX1139=")[1].split(";")[0].replace("'", "")
         print("THX" + thx)
-        home_session_cleanup_url = 'https://bvnegocios.banrural.com.gt/corp/pages/jsp/inc/homeSessionCleanup.jsp'
-        body = {
-            'CSRF_TOKEN': token
-        }
+        home_session_cleanup_url = "https://bvnegocios.banrural.com.gt/corp/pages/jsp/inc/homeSessionCleanup.jsp"
+        body = {"CSRF_TOKEN": token}
         result = self.bank._fetch(home_session_cleanup_url, body)
 
         body = {
-    
-    'CSRF_TOKEN': token,
-    'TSView': 'true',
-    'ResetTSZBADisplay': 'true',
-    'operationFlag': '',
-    'exportHistoryUrlValue': '/corp/pages/jsp/account/inc/account-history-export-common.jsp?CSRF_TOKEN=8449846631668390886',
-    'accountGroup': '1',
-    'corporateAccount': '{0},1000,{1},1,false'.format(self.account_number, self.account_bank_reference),
-    'StartDateSessionValue': '07/03/2022',
-    'EndDateSessionValue': '05/04/2022',
-    'GetPagedTransactions.StartDate': '',
-    'GetPagedTransactions.EndDate': '',
-    'GetPagedTransactions.DateRangeValue': 'Last Week',
-    'ammountStart': '',
-    'ammountEnd': '',
-    'searchDescription': '',
-    'searchFlag': 'true',
-    'struts.enableJSONValidation': 'true',
-    'struts.validateOnly': 'true',
-
-
+            "CSRF_TOKEN": token,
+            "TSView": "true",
+            "ResetTSZBADisplay": "true",
+            "operationFlag": "",
+            "exportHistoryUrlValue": "/corp/pages/jsp/account/inc/account-history-export-common.jsp?CSRF_TOKEN=8449846631668390886",
+            "accountGroup": "1",
+            "corporateAccount": "{0},1000,{1},1,false".format(
+                self.account_number, self.account_bank_reference
+            ),
+            "StartDateSessionValue": start_date.strftime("%d/%m/%Y"),
+            "EndDateSessionValue": end_date.strftime("%d/%m/%Y"),
+            "GetPagedTransactions.StartDate": start_date.strftime("%d/%m/%Y"),
+            "GetPagedTransactions.EndDate": end_date.strftime("%d/%m/%Y"),
+            "GetPagedTransactions.DateRangeValue": "",
+            "ammountStart": "",
+            "ammountEnd": "",
+            "searchDescription": "",
+            "searchFlag": "true",
+            "struts.enableJSONValidation": "true",
+            "struts.validateOnly": "true",
         }
         query = urlencode(body)
         print(query)
-        result = self.bank._session.post(url, data=query, headers={
-              'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': '*/*',
+        result = self.bank._session.post(
+            url,
+            data=query,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "*/*",
+            },
+            cookies=cookies,
+        ).text
 
-        }, cookies=cookies).text
-        
         body_simple = {
-        
-                'CSRF_TOKEN': token,
-                'TSView': 'true',
-                'ResetTSZBADisplay': 'true',
-                'operationFlag': '',
-                'exportHistoryUrlValue': '/corp/pages/jsp/account/inc/account-history-export-common.jsp?CSRF_TOKEN={0}'.format(token),
-                'accountGroup': '1',
-                'corporateAccount':  '{0},1000,{1},1,false'.format(self.account_number, self.account_bank_reference),
-                'StartDateSessionValue': '07/03/2022',
-                'EndDateSessionValue': '05/04/2022',
-                'GetPagedTransactions.StartDate':  '07/03/2022',
-                'GetPagedTransactions.EndDate':'05/04/2022',
-                'GetPagedTransactions.DateRangeValue': '',
-                'ammountStart': '',
-                'ammountEnd': '',
-                'searchDescription': '',
-                'searchFlag': 'true',
+            "CSRF_TOKEN": token,
+            "TSView": "true",
+            "ResetTSZBADisplay": "true",
+            "operationFlag": "",
+            "exportHistoryUrlValue": "/corp/pages/jsp/account/inc/account-history-export-common.jsp?CSRF_TOKEN={0}".format(
+                token
+            ),
+            "accountGroup": "1",
+            "corporateAccount": "{0},1000,{1},1,false".format(
+                self.account_number, self.account_bank_reference
+            ),
+            "StartDateSessionValue": start_date.strftime("%d/%m/%Y"),
+            "EndDateSessionValue": end_date.strftime("%d/%m/%Y"),
+            "GetPagedTransactions.StartDate": start_date.strftime("%d/%m/%Y"),
+            "GetPagedTransactions.EndDate": end_date.strftime("%d/%m/%Y"),
+            "GetPagedTransactions.DateRangeValue": "",
+            "ammountStart": "",
+            "ammountEnd": "",
+            "searchDescription": "",
+            "searchFlag": "true",
         }
         query_simple = urlencode(body_simple)
 
-        result = self.bank._session.post(url, data=query_simple, headers={
-              'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': '*/*',
+        result = self.bank._session.post(
+            url,
+            data=query_simple,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "*/*",
+            },
+            cookies=cookies,
+        ).text
 
-        }, cookies=cookies).text
-        
-        url_account_history = "https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/accounthistory_grid.jsp?THX1139={0}&_={1}".format(thx, str(round(time.time() * 1000)))
-        
+        url_account_history = "https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/accounthistory_grid.jsp?THX1139={0}&_={1}".format(
+            thx, str(round(time.time() * 1000))
+        )
+
         result = self.bank._fetch(url_account_history)
+
     def fetch_movements(self, start_date, end_date):
-        self.main_url = "https://bvnegocios.banrural.com.gt/corp/pages/jsp/home/home-page.action"
-        self.search_results = 'https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/getSearchResults.action'
-        
+        self.main_url = (
+            "https://bvnegocios.banrural.com.gt/corp/pages/jsp/home/home-page.action"
+        )
+        self.search_results = "https://bvnegocios.banrural.com.gt/corp/pages/jsp/account/getSearchResults.action"
+
         response = self.bank._session.get(self.main_url)
         results = response.text
         results_bs = BeautifulSoup(results, features="html.parser")
         print(self.bank._session.cookies.get_dict())
-        for script in results_bs.find_all('script'):
-            if (script.string and 'CSRF_TOKEN' in script.string):
-                token = script.string.split('CSRF_TOKEN')[1].split('\'')[1]
+        for script in results_bs.find_all("script"):
+            if script.string and "CSRF_TOKEN" in script.string:
+                token = script.string.split("CSRF_TOKEN")[1].split("'")[1]
                 print(token)
-        self._make_query_for_date(start_date, end_date, token, self.search_results, cookies=response.cookies)
+        self._make_query_for_date(
+            start_date, end_date, token, self.search_results, cookies=response.cookies
+        )
         query_dict = {
-            'accountIndex': '1',
-            'setAccountID': self.account_number,
-            'collectionName': 'Transactions',
-            'GridURLs': 'GRID_accountHistory',
-            '_': str(round(time.time() * 1000)),
-            '_search': 'false',
-            'nd': str(round(time.time() * 1000)),
-            'rows': '50',
-            'page': '1',
-            'sidx': 'date',
-            'sord': 'asc',
+            "accountIndex": "1",
+            "setAccountID": self.account_number,
+            "collectionName": "Transactions",
+            "GridURLs": "GRID_accountHistory",
+            "_": str(round(time.time() * 1000)),
+            "_search": "false",
+            "nd": str(round(time.time() * 1000)),
+            "rows": "1000000",
+            "page": "1",
+            "sidx": "date",
+            "sord": "asc",
         }
         query = urlencode(query_dict)
         full_url = self.bank.movements_url + "?" + query
         results = self.bank._fetch(full_url, json=True)
         movements = []
         for mov in results["gridModel"]:
-            if mov['map']['auxCreditDebitNoteMin'] == 'debita':
-                ammount = mov['map']['auxCreditDebitValue'] * -1
+            if mov["map"]["auxCreditDebitNoteMin"] == "debita":
+                ammount = mov["map"]["auxCreditDebitValue"] * -1
             else:
-                ammount = mov['map']['auxCreditDebitValue']
+                ammount = mov["map"]["auxCreditDebitValue"]
             ammount = Money(amount=ammount, currency="GTQ")
-            description = mov["description"] 
+            description = mov["description"]
             date = datetime.datetime.strptime(mov["date"], "%d/%m/%Y")
             reference_number = None
             if "referenceNumber" in mov:
-                reference_number = mov['referenceNumber']
-            movement = Movement(self, mov["customerReferenceNumber"], date, description, ammount, reference_number)
+                reference_number = mov["referenceNumber"]
+            movement = Movement(
+                self,
+                mov["customerReferenceNumber"],
+                date,
+                description,
+                ammount,
+                reference_number,
+            )
             movements.append(movement)
         return movements
-        
+
 
 class BanruralBankAccount(AbstractBankAccount):
     _FILE_NAME = "".join(random.choices(string.digits, k=8))
