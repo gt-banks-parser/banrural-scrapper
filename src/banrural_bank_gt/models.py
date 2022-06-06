@@ -389,7 +389,8 @@ class BanruralBankCorporateAccount(AbstractBankAccount):
                 ammount,
                 reference_number,
             )
-            movement.balance = mov["map"]["balance"]
+            movement.balance = mov["map"]["balance2"]
+            movement.account_balance = mov["map"]["balance"]
 
             movements.append(movement)
         return movements
