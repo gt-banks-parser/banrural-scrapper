@@ -370,6 +370,7 @@ class BanruralBankCorporateAccount(AbstractBankAccount):
         results = self.bank._fetch(full_url, json=True)
         movements = []
         for mov in results["gridModel"]:
+            logging.info(mov)
             if mov["map"]["auxCreditDebitNoteMin"] == "debita":
                 ammount = mov["map"]["auxCreditDebitValue"] * -1
             else:
@@ -388,6 +389,8 @@ class BanruralBankCorporateAccount(AbstractBankAccount):
                 ammount,
                 reference_number,
             )
+            movement.balance = mov["map"]["balance"]
+
             movements.append(movement)
         return movements
 
